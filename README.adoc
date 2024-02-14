@@ -1,0 +1,310 @@
+:spring_data_rest: current
+:spring_data_commons: current
+:toc:
+:icons: font
+:source-highlighter: prettify
+:project_id: gs-accessing-mongodb-data-rest
+
+== Content
+
+Build a Spring application that lets you create and retrieve `Person` objects
+stored in a https://www.mongodb.org/[MongoDB] NoSQL database (docker version) by using Spring Data REST.
+Spring Data REST takes the features of
+https://projects.spring.io/spring-hateoas[Spring HATEOAS] and
+https://projects.spring.io/spring-data-mongodb[Spring Data MongoDB] and automatically
+combines them together.
+
+[[initial]]
+== Install and launch MongoDB docker
+
+For this guide to work, you must have a local MongoDB server.
+
+Make sure you have docker and docker compose installed, then run the following command:
+
+====
+[src,bash]
+----
+cp mongo.env.sample mongo.env
+//Edit the env config
+docker compose up -d
+----
+====
+
+
+[[scratch]]
+== Starting with Spring Initializr
+
+Use this https://start.spring.io/#!type=maven-project&groupId=com.example&artifactId=accessing-mongodb-data-rest&name=accessing-mongodb-data-rest&description=Demo%20project%20for%20Spring%20Boot&packageName=com.example.accessing-data-rest&dependencies=data-rest,data-mongodb[pre-initialized project] and click Generate to download a ZIP file. This project is configured to fit the examples in this tutorial.
+
+Edit the application.properties to match with docker Mongodb config.
+
+Run the application by using ./mvnw spring-boot:run.
+
+== Test the Application
+
+Now that the application is running, you can test it. You can use any REST client you wish. The following examples use the *nix tool `curl`.
+
+First you want to see the top level service, as the following example shows:
+
+====
+[source,bash]
+----
+$ curl http://localhost:8080
+{
+  "_links" : {
+    "people" : {
+      "href" : "http://localhost:8080/people{?page,size,sort}",
+      "templated" : true
+    }
+  }
+}
+----
+====
+
+The preceding example provides a first glimpse of what this server has to offer. There is
+a `people` link located at http://localhost:8080/people. It has some options, such as
+`?page`, `?size`, and `?sort`.
+
+When you use the people link, you see the `Person` records in the database (none at
+present):
+
+====
+[source,bash]
+----
+$ curl http://localhost:8080/people
+{
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/people{?page,size,sort}",
+      "templated" : true
+    },
+    "search" : {
+      "href" : "http://localhost:8080/people/search"
+    }
+  },
+  "page" : {
+    "size" : 20,
+    "totalElements" : 0,
+    "totalPages" : 0,
+    "number" : 0
+  }
+}
+----
+====
+
+There are currently no elements and, hence, no pages. It is time to create a new `Person`!
+
+NOTE: If you run this guide multiple times, there may be leftover data. Refer to the
+https://docs.mongodb.org/manual/reference/mongo-shell/[MongoDB shell quick reference] for
+commands to find and drop your database if you need a fresh start.
+
+The following command creates a person named "`Frodo Baggins`":
+
+====
+[source,bash]
+----
+$ curl -i -X POST -H "Content-Type:application/json" -d "{  \"firstName\" : \"Frodo\",  \"lastName\" : \"Baggins\" }" http://localhost:8080/people
+HTTP/1.1 201 Created
+Server: Apache-Coyote/1.1
+Location: http://localhost:8080/people/53149b8e3004990b1af9f229
+Content-Length: 0
+Date: Mon, 03 Mar 2014 15:08:46 GMT
+----
+
+- `-i`: Ensures you can see the response message including the headers. The URI of the
+newly created `Person` is shown.
+- `-X POST`: Signals this a `POST` used to create a new entry.
+- `-H "Content-Type:application/json"`: Sets the content type so the application knows the
+payload contains a JSON object.
+- `-d '{  "firstName" : "Frodo",  "lastName" : "Baggins" }'`: Is the data being sent.
+====
+
+NOTE: Notice how the previous `POST` operation includes a `Location` header. This contains
+the URI of the newly created resource. Spring Data REST also has two methods
+(`RepositoryRestConfiguration.setReturnBodyOnCreate(…)` and `setReturnBodyOnUpdate(…)`)
+that you can use to configure the framework to immediately return the representation of
+the resource just created/updated.
+
+From this you can query for all people, as the following example shows:
+
+====
+[source,bash]
+----
+$ curl http://localhost:8080/people
+{
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/people{?page,size,sort}",
+      "templated" : true
+    },
+    "search" : {
+      "href" : "http://localhost:8080/people/search"
+    }
+  },
+  "_embedded" : {
+    "persons" : [ {
+      "firstName" : "Frodo",
+      "lastName" : "Baggins",
+      "_links" : {
+        "self" : {
+          "href" : "http://localhost:8080/people/53149b8e3004990b1af9f229"
+        }
+      }
+    } ]
+  },
+  "page" : {
+    "size" : 20,
+    "totalElements" : 1,
+    "totalPages" : 1,
+    "number" : 0
+  }
+}
+----
+====
+
+The `persons` object contains a list with Frodo. Notice how it includes a `self` link.
+Spring Data REST also uses the
+https://www.atteo.org/2011/12/12/Evo-Inflector.html[Evo Inflector] to pluralize the names
+of entities for groupings.
+
+You can directly query for the individual record, as the following example shows:
+
+====
+[source,bash]
+----
+$ curl http://localhost:8080/people/53149b8e3004990b1af9f229
+{
+  "firstName" : "Frodo",
+  "lastName" : "Baggins",
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/people/53149b8e3004990b1af9f229"
+    }
+  }
+}
+----
+====
+
+NOTE: This might appear to be purely web-based, but, behind the scenes, it is talking to
+the MongoDB database you started.
+
+In this guide, there is only one domain object. With a more complex system, where domain
+objects are related to each other, Spring Data REST renders additional links to help
+navigate to connected records.
+
+Find all the custom queries, as the following example shows:
+
+====
+[source,bash]
+----
+$ curl http://localhost:8080/people/search
+{
+  "_links" : {
+    "findByLastName" : {
+      "href" : "http://localhost:8080/people/search/findByLastName{?name}",
+      "templated" : true
+    }
+  }
+}
+----
+====
+
+You can see the URL for the query, including the HTTP query parameter, `name`. This
+matches the `@Param("name")` annotation embedded in the interface.
+
+To use the `findByLastName` query, run the following  command:
+
+====
+[source,bash]
+----
+$ curl http://localhost:8080/people/search/findByLastName?name=Baggins
+{
+  "_embedded" : {
+    "persons" : [ {
+      "firstName" : "Frodo",
+      "lastName" : "Baggins",
+      "_links" : {
+        "self" : {
+          "href" : "http://localhost:8080/people/53149b8e3004990b1af9f229"
+        }
+      }
+    } ]
+  }
+}
+----
+====
+
+Because you defined it to return `List<Person>` in the code, it returns all of the
+results. If you had defined it to return only `Person`, it picks one of the `Person`
+objects to return. Since this can be unpredictable, you probably do not want to do that
+for queries that can return multiple entries.
+
+You can also issue `PUT`, `PATCH`, and `DELETE` REST calls to replace, update, or delete
+existing records, respectively. The following example uses a `PUT` call:
+
+====
+[source,bash]
+----
+$ curl -X PUT -H "Content-Type:application/json" -d "{ \"firstName\": \"Bilbo\", \"lastName\": \"Baggins\" }" http://localhost:8080/people/53149b8e3004990b1af9f229
+$ curl http://localhost:8080/people/53149b8e3004990b1af9f229
+{
+  "firstName" : "Bilbo",
+  "lastName" : "Baggins",
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/people/53149b8e3004990b1af9f229"
+    }
+  }
+}
+----
+====
+
+The following example uses a `PATCH` call:
+
+====
+[source,bash]
+----
+$ curl -X PATCH -H "Content-Type:application/json" -d "{ \"firstName\": \"Bilbo Jr.\" }" http://localhost:8080/people/53149b8e3004990b1af9f229
+$ curl http://localhost:8080/people/53149b8e3004990b1af9f229
+{
+  "firstName" : "Bilbo Jr.",
+  "lastName" : "Baggins",
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/people/53149b8e3004990b1af9f229"
+    }
+  }
+}
+----
+====
+
+NOTE: `PUT` replaces an entire record. Fields not supplied will be replaced with `null`.
+You can use `PATCH` to update a subset of items.
+
+You can also delete records, as the following example shows:
+
+====
+[source,bash]
+----
+$ curl -X DELETE http://localhost:8080/people/53149b8e3004990b1af9f229
+$ curl http://localhost:8080/people
+{
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/people{?page,size,sort}",
+      "templated" : true
+    },
+    "search" : {
+      "href" : "http://localhost:8080/people/search"
+    }
+  },
+  "page" : {
+    "size" : 20,
+    "totalElements" : 0,
+    "totalPages" : 0,
+    "number" : 0
+  }
+}
+----
+====
+

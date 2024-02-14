@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  spring_boot_mongodb:
+    image: mongo
+    container_name: spring_boot_mongodb
+    restart: always
+    env_file:
+      - mongo.env
+    networks:
+      - spring_boot_test_network
+    volumes:
+      - data:/data/db
+    ports:
+      - "27019:27017"
+
+volumes:
+  data:
+
+networks:
+  spring_boot_test_network:
+    driver: bridge
